@@ -12,7 +12,7 @@
 #include <ESP8266httpUpdate.h>
 #include <FS.h>
 
-const char* version = "0.4";
+const char* version = "0.5";
 
 #define PIN_BUTTON    14  // local control button - short press: on/off, long press adjusts dimming
 #define PIN_LEVEL     13  // PWM output to LEDs - 0 (always low) for off, 1023 (always high) full on
@@ -23,14 +23,14 @@ const char* version = "0.4";
 WiFiClient client;
 ESP8266WebServer server(80);
 
-String devname = String("unset!");
-String error = String("");    // reported on serial interface and on configuration web page
+String devname = String();    // SmartThings name, configuration SSID, and default hostname
+String error = String();    // reported on serial interface and on configuration web page
 const char* configFile = "/Dimmer.cfg";
 //configuration parameters
 // one per line in configuration file, no labels, just the strings
-String ssid = String("");        // line 1 - WLAN from which the hub is reachable
-String password = String("");    // line 2 - WLAN password (empty line if none)
-String host = String("");     // line 4 - hostname for this device
+String ssid = String();        // line 1 - WLAN from which the hub is reachable
+String password = String();    // line 2 - WLAN password (empty line if none)
+String host = String();     // line 4 - hostname for this device
 
 const char *statusWiFi[] = {
     "Idle",
@@ -168,7 +168,7 @@ void sendConfigurationForm() {
   Serial.println(F("in sendConfigurationForm"));
   char s[2048];
   sprintf_P(s, PSTR("<!DOCTYPE HTML><html><body><b>WiFi 12volt LED Dimmer - version %s\n\
-    <br>MAC address = %s</b><p><i>%s</i><p>Please supply values and click SEND\n\
+    <br>MAC address = %s</b><p><i>%s</i><p>Please supply values and click CONFIGURE\n\
     <p><form method=GET action='config'>\n\
     <p>WiFi SSID - <input type='text' name='ssid' value='%s' size=32 maxlength=32>\n\
     <br>(required - 32 characters or less)\n\
@@ -176,15 +176,15 @@ void sendConfigurationForm() {
     <br>(if required for the SSID - 63 characters or less)\n\
     <p>Hostname  - <input type='text' name='host' value='%s' size=32 maxlength=32>\n\
     <br>(optional - 32 characters or less)\n\
-    <p><input type='submit' name='submit1' value='SEND'></form>\n\
+    <p><input type='submit' name='submit1' value='CONFIGURE'></form>\n\
 	  <p><p>OR enter the location of firmware below\n\
-	  <br>and click UPDATE while pressing dimmer button.\n\
+	  <br>and click UPDATE <b>while pressing dimmer button</b>.\n\
     <p><form method=GET action='updatefirmware'>\n\
     <p>URL - <input type='text' name='url' size=72 maxlength=256>\n\
     <br>(eg: http://server:port/path/file.bin )\n\
     <p><input type='submit' name='submit2' value='UPDATE'></form>\n\
 	  </body></html>"), version, WiFi.macAddress().c_str(), error.c_str(),
-                      ssid.c_str(), host.c_str());
+                      ssid.c_str(), (host.length()?host:devname).c_str());
   server.send(200, "text/html", s);
 }
 
@@ -210,6 +210,7 @@ void handleConfiguration() {
         server.send(200, "text/html", "<!DOCTYPE HTML><html><body><h3>RESTARTING</h3></body></html>");
         delay(200);
         server.stop();
+        WiFi.softAPdisconnect(true);
         ESP.restart();
         Serial.println(F("I'm still here?"));
         return;
@@ -228,7 +229,7 @@ void handleUpdateFirmware() {
   if (digitalRead(PIN_BUTTON) == LOW) {   // button is pressed - do update
     String url = server.arg("url");   // error/input check? XXXXXXXXXXXXXXXXXXXXXXX
     devState = UPDATING; // don't expect this to do anything XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-    digitalWrite(PIN_BLUE, LOW);  // so turn on steady blue LED during update instead
+    digitalWrite(PIN_RED, LOW);  // so turn on steady red LED during update instead
     server.send(200, "text/html", "<!DOCTYPE HTML><html><body><h3>UPDATING</h3></body></html>");
     Serial.print("Updating...");
     delay(200);
@@ -459,10 +460,10 @@ void setStatusLEDs() {
 			if (!(sixteenths&FLASH1EVERY2SEC)) blue = LOW;
       break;
     case UPDATING:
-			if (!(sixteenths&FLASH1EVERYHALFSEC)) blue = LOW;
+			if (!(sixteenths&FLASH1EVERYHALFSEC)) red = LOW;
       break;
     case UPDATE_FAILED:
-			if (!(sixteenths&FLASH2EVERYHALFSEC)) blue = LOW;
+			if (!(sixteenths&FLASH2EVERYHALFSEC)) red = LOW;
       break;
 		}
 		digitalWrite(PIN_RED, red);

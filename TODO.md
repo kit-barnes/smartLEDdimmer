@@ -6,14 +6,17 @@ BUGS
   FIXED 2017/10/15
 - maxlength in firmware URL form  
   FIXED 2017/10/15
+- Don't show Firmware Update when on configuration LAN
 
 PROPOSED
 --------
 - change device operation to match Leviton (and my earlier ESP1 ST_Anywhere) devices.  
-ie: When level is set, set switch accordingly. (switch = level? on : off)  
-DONE 2017/10/15
+  ie: When level is set, set switch accordingly. (switch = level? on : off)  
+  DONE 2017/10/15
 - Don't fill in password field in device configuration form  
-DONE 2017/10/15
+  DONE 2017/10/15
 - Don't disconnect WiFi at every startup
 - improve device web UI.  status?  control?  help?  link to GitHub repo?
+- SET request must be in proper format - else return NOT FOUND.
 - Change uuid base back to ESP8266SSDP standard (so ESP8266SSDP.cpp need not be modified)
+- Change device rate curve to be quicker at the bright end.
