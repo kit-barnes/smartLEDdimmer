@@ -4,7 +4,7 @@
  *
  *  Copyright 2017 William C Barnes
  */
- //open WLAN for configuration at 192.168.4.1:80
+ // Initial configuration at 192.168.4.1:80 on open WLAN - SSID: wcbDimmerXXXXXX
 
 #include <ESP8266WiFi.h>
 #include <ESP8266SSDP.h>    // ESP8266SSDP.ccp modified to provide different uuid base
@@ -54,16 +54,7 @@ int ledRate = 0;        // dim/brighten rate - 0=immediate
 int targetPWM = 0;      // 0 to 1023 - internal
 bool longPress = false; // button is long-pressed (local dimmer control asserted)
 
-void setup() {
-	
-/*	
-  uint32_t chipId = ESP.getChipId();
-  sprintf(_uuid, "78c7729c-ceeb-456a-8393-b2eea7%02x%02x%02x",
-    (uint16_t) ((chipId >> 16) & 0xff),
-    (uint16_t) ((chipId >>  8) & 0xff),
-    (uint16_t)   chipId        & 0xff  );
-*/
-	
+void setup() {	
   devname = String("wcbDimmer")+String(ESP.getChipId(),16);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();    // need WiFi disconnected to set host name
@@ -119,9 +110,11 @@ void setup() {
     devState = FACTORY_RESET;
   }
   // configure and start http server
-  server.on("/", sendConfigurationForm);
-  server.on("/config", handleConfiguration);
-  server.on("/updatefirmware", handleUpdateFirmware);
+  server.on("/", HTTP_GET, error.length()? sendConfigurationForm: sendDimmerRoot);
+  server.on("/script.js", HTTP_GET, sendJS);
+  server.on("/card", HTTP_GET, handleCardRequest);
+  server.on("/config", HTTP_GET, handleConfiguration);
+  server.on("/updatefirmware", HTTP_GET, handleUpdateFirmware);
   server.on("/description.xml", HTTP_GET, [](){
     WiFiClient c = server.client();
     Serial.print(F("Description request - Remote:"));
@@ -164,8 +157,89 @@ void setup() {
   Serial.println(F("exiting setup()"));
 }
 
+static const char HTTP_START[] PROGMEM = "<!DOCTYPE HTML><html><head>\n\
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\
+  <style>\n\
+    body {font-family:\"Lato\",sans-serif;}\n\
+    div.tabs {overflow:hidden;background-color:#f1f1f1;}\n\
+    div.tabs button {background-color:inherit;float:left;padding: 14px 16px;font-size: 17px;}\n\
+    div.tabs button:hover{background-color:#ddd;}\n\
+    div.tabs button.active {background-color: #ccc;}\n\
+  </style><script src='/script.js'></script>\n\
+  </head><body onload='startup()'>\n\
+    <p><b>WiFi 12volt LED Dimmer - version %s\n\
+    <br>MAC address = %s</b>";    // printf format string requires version & MAC address
+
+void sendDimmerRoot() {
+  Serial.print(F("in sendDimmerRoot...  strlen(s) = "));
+  char s[3200];
+  sprintf_P(s, HTTP_START, version, WiFi.macAddress().c_str());
+  sprintf_P( &s[strlen(s)], PSTR("\
+    <noscript><p>This page requires JavaScript which your browser is not providing.</noscript>\n\
+    <div class='tabs'>\n\
+      <button class='tab' onclick=\"tabHit(event, 'ctrl')\" id='defaultCard'>State</button>\n\
+      <button class='tab' onclick=\"tabHit(event, 'cnfg')\">Config</button>\n\
+      <button class='tab' onclick=\"tabHit(event, 'help')\">Help</button>\n\
+    </div><div id='card'>/div></body></html>") );
+  Serial.println(strlen(s));
+  server.send(200, "text/html", s);
+}
+
+void sendJS() {
+  Serial.print(F("in sendJS...  strlen(s) = "));
+  char s[3200];
+  sprintf_P(s, PSTR("\n\
+    function startup() {\n\
+      document.getElementById('defaultCard').click();\n\
+    }\n\
+	  var refreshTmr;\n\
+    function tabHit(evt, cardNm) {\n\
+      var i, tab;\n\
+      tab = document.getElementsByClassName('tab');\n\
+      for (i = 0; i < tab.length; i++) {\n\
+        tab[i].className = tab[i].className.replace(' active', \"\");\n\
+      }\n\
+      evt.currentTarget.className += ' active';\n\
+      var xhttp = new XMLHttpRequest();\n\
+      xhttp.onreadystatechange = function() {\n\
+        if (this.readyState == 4 && this.status == 200) {\n\
+          document.getElementById('card').innerHTML = this.responseText;\n\
+          if (refreshTmr) { if (cardNm!='ctrl') {\n\
+			      clearInterval(refreshTmr); refreshTmr = null; }\n\
+          } else if (cardNm=='ctrl') {\n\
+            refreshTmr = setInterval(setLED, 5000);  setLED(); }\n\
+        }\n\
+      };\n\
+      xhttp.open('GET', 'card?cardNm='+cardNm, true);\n\
+      xhttp.send();\n\
+    }\n\
+    function setLED(param='') {\n\
+      var xhttp = new XMLHttpRequest();\n\
+      xhttp.onreadystatechange = function() {\n\
+        if (this.readyState == 4 && this.status == 200) {\n\
+          // All 3 headers SHOULD always be there, but...\n\
+          var x = this.getResponseHeader('Switch');\n\
+          if (x) document.getElementById('switch').checked = (x == 'on');\n\
+          x = this.getResponseHeader('Level');\n\
+          if (x) {\n\
+            var l = parseInt(x);\n\
+            document.getElementById('slider').value = l;\n\
+            document.getElementById('lvl').value = l;\n\
+          }\n\
+          x = this.getResponseHeader('Rate');\n\
+          if (x) document.getElementById('rate').value = parseInt(x);\n\
+        }\n\
+      };\n\
+      xhttp.open('GET', 'set'+param, true);\n\
+      xhttp.send();\n\
+    }\n\
+  "));
+  Serial.println(strlen(s));
+  server.send(200, "application/javascript", s);
+}
+
 void sendConfigurationForm() {
-  Serial.println(F("in sendConfigurationForm"));
+  Serial.print(F("in sendConfigurationForm...  strlen(s) = "));
   char s[2048];
   sprintf_P(s, PSTR("<!DOCTYPE HTML><html><body><b>WiFi 12volt LED Dimmer - version %s\n\
     <br>MAC address = %s</b><p><i>%s</i><p>Please supply values and click CONFIGURE\n\
@@ -177,14 +251,9 @@ void sendConfigurationForm() {
     <p>Hostname  - <input type='text' name='host' value='%s' size=32 maxlength=32>\n\
     <br>(optional - 32 characters or less)\n\
     <p><input type='submit' name='submit1' value='CONFIGURE'></form>\n\
-	  <p><p>OR enter the location of firmware below\n\
-	  <br>and click UPDATE <b>while pressing dimmer button</b>.\n\
-    <p><form method=GET action='updatefirmware'>\n\
-    <p>URL - <input type='text' name='url' size=72 maxlength=256>\n\
-    <br>(eg: http://server:port/path/file.bin )\n\
-    <p><input type='submit' name='submit2' value='UPDATE'></form>\n\
-	  </body></html>"), version, WiFi.macAddress().c_str(), error.c_str(),
+    </body></html>"), version, WiFi.macAddress().c_str(), error.c_str(),
                       ssid.c_str(), (host.length()?host:devname).c_str());
+  Serial.println(strlen(s));
   server.send(200, "text/html", s);
 }
 
@@ -242,7 +311,51 @@ void handleUpdateFirmware() {
 	"<!DOCTYPE HTML><html><body><h3>Forbidden:  Dimmer button not pressed</h3></body></html>");
 }
 
-void handleSet() {	// execute command from hub
+void handleCardRequest() {
+  char s[2048];
+  Serial.print(F("in handleCardRequest cardNm = "));
+  String cardNm = server.arg("cardNm");
+  Serial.print(cardNm);
+  if (cardNm == "ctrl") {
+    sprintf_P(s, PSTR("\
+      <p><label>On: <input type='checkbox' id='switch'\n\
+        onclick=\"setLED('?switch=' + (document.getElementById('switch').checked? 'on': 'off'))\"></label>\n\
+      <p><label>level: <input type='range' id='slider'\n\
+        onchange=\"setLED('?level=' + document.getElementById('slider').value)\"></label>\n\
+        <output id='lvl' for='slider'></output>\n\
+      <p><label>rate: <input type='number' id='rate' min='0' max='10'\n\
+        oninput=\"setLED('?rate=' + document.getElementById('rate').value)\"></label>\n\
+    "));
+  } else if (cardNm == "cnfg") {
+    sprintf_P(s, PSTR("<p>Please supply values and click CONFIGURE\n\
+      <p><form method=GET action='config'>\n\
+      <p>WiFi SSID - <input type='text' name='ssid' value='%s' size=32 maxlength=32>\n\
+      <br>(required - 32 characters or less)\n\
+      <p>WiFi Password - <input type='text' name='password' size=63 maxlength=63>\n\
+      <br>(if required for the SSID - 63 characters or less)\n\
+      <p>Hostname  - <input type='text' name='host' value='%s' size=32 maxlength=32>\n\
+      <br>(optional - 32 characters or less)\n\
+      <p><input type='submit' name='submit1' value='CONFIGURE'></form>\n\
+      <p><p>OR enter the location of firmware below\n\
+      <br>and click UPDATE <b>while pressing dimmer button</b>.\n\
+      <p><form method=GET action='updatefirmware'>\n\
+      <p>URL - <input type='text' name='url' size=72 maxlength=256>\n\
+      <br>(eg: http://server:port/path/file.bin )\n\
+      <p><input type='submit' name='submit2' value='UPDATE'></form>\n\
+      </body></html>"), ssid.c_str(), (host.length()?host:devname).c_str());
+  } else if (cardNm == "help") {
+    sprintf(s,"Hello World help");
+  } else {
+    server.send(400, "text/html", "<!DOCTYPE HTML><html><body><h3>Bad Request!</h3></body></html>");
+    Serial.println(F("   Bad Request"));
+    return;
+  }
+  Serial.print(F("   strlen = "));
+  Serial.println(strlen(s));
+  server.send(200, "text/html", s);
+}
+
+void handleSet() {	// execute command from hub or web interface
   Serial.println(F("in handleSet"));
   IPAddress ip;
   int port;
@@ -267,12 +380,15 @@ void handleSet() {	// execute command from hub
       ledLevel = atoi(reqLevel.c_str());
       ledOn = ledLevel? true: false;
     }
-    if (reqSwitch.length()) ledOn = (reqSwitch == "on");
+    if (reqSwitch.length()) {
+      ledOn = (reqSwitch == "on");
+	  if (ledOn && !ledLevel) ledLevel = 100;
+    }
   }
   Serial.print(F(" ledOn=")); Serial.print(ledOn);
   Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
   Serial.print(F(" ledRate=")); Serial.print(ledRate);
-	setTargetPWM();
+  setTargetPWM();
   Serial.print(F(" targetPWM=")); Serial.println(targetPWM);
   server.sendHeader("Switch",ledOn?"on":"off");
   server.sendHeader("Level",String(ledLevel).c_str());

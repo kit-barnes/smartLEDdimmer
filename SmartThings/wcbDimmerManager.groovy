@@ -1,91 +1,76 @@
 /**
- *  WCB UPnP Service Manager
+ *  WCB Dimmer Manager
  *  SmartThings Smart App
+ *  finds WCBdimmers, associates them with device hander and periodicly syncs them
  */
 definition(
-		name: "WCB UPnP Service Manager",
-		namespace: "kit-barnes",
-		author: "Kit Barnes",
-		description: "UPnP Service Manager developed for use with ESP8266 homemade devices",
-		category: "My Apps",
-		iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
-		iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-		iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
+	name: "WCB Dimmer Manager",
+	namespace: "kit-barnes",
+	author: "Kit Barnes",
+	description: "UPnP Service Manager finds WCBdimmers, associates them with device handler and periodicly syncs them",
+	category: "My Apps",
+	iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
+	iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+	iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
 
 preferences {
-	page(name: "searchTargetSelection", title: "UPnP Search Target", nextPage: "deviceDiscovery") {
-		section("Search Target") {
-			input "searchTarget", "string", title: "Search Target", defaultValue: "urn:schemas-upnp-org:device:DimmableLight:1", required: true
-		}
-	}
-	page(name: "deviceDiscovery", title: "UPnP Device Setup", content: "deviceDiscovery")
+	page(name: "dimmerDiscovery")
 }
 
-def deviceDiscovery() {
+def dimmerDiscovery() {
+	log.debug "In dimmerDiscovery"
+	ssdpSubscribe()
+	ssdpDiscover()
+	verifyDevices()
 	def options = [:]
 	def devices = getVerifiedDevices()
 	devices.each {
-		def value = it.value.name ?: "UPnP Device ${it.value.ssdpUSN.split(':')[1][-3..-1]}"
+		def value = it.value.name
 		def key = it.value.mac
+//		if (value.startsWith("wcbDimmer")) { options["${key}"] = value }
 		options["${key}"] = value
 	}
-
-	ssdpSubscribe()
-
-	ssdpDiscover()
-	verifyDevices()
-
-	return dynamicPage(name: "deviceDiscovery", title: "Discovery Started!", nextPage: "", refreshInterval: 5, install: true, uninstall: true) {
-		section("Please wait while we discover your UPnP Device. Discovery can take five minutes or more, so sit back and relax! Select your device below once discovered.") {
-			input "selectedDevices", "enum", required: false, title: "Select Devices (${options.size() ?: 0} found)", multiple: true, options: options
+	return dynamicPage(name: "dimmerDiscovery", title: "Searching for dimmers",
+	  nextPage: "", refreshInterval: 10, install: true, uninstall: true) {
+		section("Please wait while we discover your dimmer(s). Discovery may take a few minutes. Select your device(s) below once discovered.") {
+			input "selectedDevices", "enum", required: false,
+			title: "Select Devices (${options.size() ?: 0} found)",
+			multiple: true, options: options
 		}
 	}
 }
 
 def installed() {
 	log.debug "Installed with settings: ${settings}"
-
 	initialize()
 }
 
 def updated() {
 	log.debug "Updated with settings: ${settings}"
-
-	unsubscribe()
 	initialize()
 }
 
 def initialize() {
 	unsubscribe()
 	unschedule()
-
-	ssdpSubscribe()
-
 	if (selectedDevices) {
 		addDevices()
 	}
-
-	runEvery10Minutes("ssdpDiscover")
+	ssdpSubscribe()
+	runEvery15Minutes("ssdpDiscover")
 }
 
 void ssdpDiscover() {
+	def searchTarget = "urn:schemas-upnp-org:device:DimmableLight:1"
+	log.debug "lan discovery ${searchTarget}"
 	sendHubCommand(new physicalgraph.device.HubAction("lan discovery ${searchTarget}", physicalgraph.device.Protocol.LAN))
 }
 
 void ssdpSubscribe() {
+	def searchTarget = "urn:schemas-upnp-org:device:DimmableLight:1"
+	log.debug "subscribe location = ${location}"
 	subscribe(location, "ssdpTerm.${searchTarget}", ssdpHandler)
-}
-
-Map verifiedDevices() {
-	def devices = getVerifiedDevices()
-	def map = [:]
-	devices.each {
-		def value = it.value.name ?: "UPnP Device ${it.value.ssdpUSN.split(':')[1][-3..-1]}"
-		def key = it.value.mac
-		map["${key}"] = value
-	}
-	map
 }
 
 void verifyDevices() {
@@ -121,7 +106,6 @@ def addDevices() {
 				it.deviceNetworkId == selectedDevice.value.mac
 			}
 		}
-
 		if (!d) {
 			log.debug "Creating WCB 12vLED Dimmer Device with dni: ${selectedDevice.value.mac}"
 			log.trace "selectedDevice: ${selectedDevice}"
@@ -143,16 +127,16 @@ def addDevices() {
 def ssdpHandler(evt) {
 	def description = evt.description
 	def hub = evt?.hubId
-
 	def parsedEvent = parseLanMessage(description)
 	parsedEvent << ["hub":hub]
-
 	def devices = getDevices()
 	String ssdpUSN = parsedEvent.ssdpUSN.toString()
 	if (devices."${ssdpUSN}") {
+		log.debug "Discovered existing device"
 		def d = devices."${ssdpUSN}"
 		def child = getChildDevice(parsedEvent.mac)
 		if (d.networkAddress != parsedEvent.networkAddress || d.deviceAddress != parsedEvent.deviceAddress) {
+			log.debug "Discovered changed device address"
 			d.networkAddress = parsedEvent.networkAddress
 			d.deviceAddress = parsedEvent.deviceAddress
 			if (child) {
@@ -160,18 +144,22 @@ def ssdpHandler(evt) {
 			}
 		}
 		if (child) {
+			log.debug "Refreshing existing child device"
 			child.refresh()
 		}
 	} else {
+		log.debug "Discovered new device"
 		devices << ["${ssdpUSN}": parsedEvent]
 	}
 }
 
 void deviceDescriptionHandler(physicalgraph.device.HubResponse hubResponse) {
+	log.debug "In deviceDescriptionHandler"
 	def body = hubResponse.xml
 	def devices = getDevices()
 	def device = devices.find { it?.key?.contains(body?.device?.UDN?.text()) }
 	if (device) {
+		log.debug "device verified"
 		device.value << [
 			name: body?.device?.friendlyName?.text(),
 			model: body?.device?.modelName?.text(),
@@ -186,5 +174,6 @@ private Integer convertHexToInt(hex) {
 }
 
 private String convertHexToIP(hex) {
-	[convertHexToInt(hex[0..1]),convertHexToInt(hex[2..3]),convertHexToInt(hex[4..5]),convertHexToInt(hex[6..7])].join(".")
+	[ convertHexToInt(hex[0..1]), convertHexToInt(hex[2..3]),
+		convertHexToInt(hex[4..5]), convertHexToInt(hex[6..7]) ].join(".")
 }

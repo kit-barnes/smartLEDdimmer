@@ -1,5 +1,5 @@
 /**
- *  SmartThings Device Driver for WCB homebuilt UPnP 12vLED Dimmer
+ *  SmartThings Device Handler for WCB homebuilt uPnP 12vLED Dimmer
  *
  *  Copyright 2017 William C Barnes
  *
