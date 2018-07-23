@@ -7,6 +7,8 @@ BUGS
 - maxlength in firmware URL form  
   FIXED 2017/10/15
 - Don't show Firmware Update when on configuration LAN
+- main LED flickering when downloading during update?
+- LED state is ON after power-up but not reported to hub
 
 PROPOSED
 --------
@@ -24,6 +26,9 @@ PROPOSED
   - control
     DONE 2017/10/25
   - help?  link to GitHub repo?
+  - hub link status
 - SET request must be in proper format - else return NOT FOUND.
+  More assurance on hub (wcb handler) recognition.
 - Change uuid base back to ESP8266SSDP standard (so ESP8266SSDP.cpp need not be modified)
 - Change device rate curve to be quicker at the bright end.
+- Configuration requires button press

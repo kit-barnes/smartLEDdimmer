@@ -25,8 +25,8 @@ firmware load.
 
 Status LEDs
 -----------
-The Adafruit Huzza ESP8266 breakout module has 2 LEDS (one red and one blue)
-which are used to indicate device status. The red one will be lit during startup and
+The Adafruit Huzza ESP8266 breakout module has 2 LEDs (one red and one blue)
+which are used to indicate status. The red one will be lit during startup and
 whenever the button is pressed.
 
 - During firmware update - Red LED flashing once every half-second
@@ -44,10 +44,10 @@ The firmware is an Arduino sketch and can be installed
 by following instructions on the Adafruit website at  
 http://learn.adafruit.com/adafruit-huzzah-esp8266-breakout/using-arduino-ide
 
-I do not solder a header onto the Huzzah for the load.
-Rather I plug one into the FTDI cable, plug the resulting short pins
+I do not solder a header onto the Huzzah to load the firmware.
+Rather I plug one into the FTDI cable, 'plug' the resulting short pins
 into the Huzzah, and hold it there with slight angular pressure
-while I load the firmware.  
+while loading the firmware.  
 Note: While loading, 12V supply is disconnected - Huzzah is powered by FTDI cable.
 
 
