@@ -9,6 +9,10 @@ BUGS
 - Don't show Firmware Update when on configuration LAN
 - main LED flickering when downloading during update?
 - LED state is ON after power-up but not reported to hub
+- Occasional multi-second delay on short tap after long period of inactivity
+- Label rate slider in SmartThings app
+- updateHub() WAS working but now gets stuck sometime after sending message?
+  ? Broken by Samsung update early (March?) 2019.
 
 PROPOSED
 --------
@@ -32,3 +36,4 @@ PROPOSED
 - Change uuid base back to ESP8266SSDP standard (so ESP8266SSDP.cpp need not be modified)
 - Change device rate curve to be quicker at the bright end.
 - Configuration requires button press
+- Update ReadMe to finish SmartThings configuration and document OTA firmware update
