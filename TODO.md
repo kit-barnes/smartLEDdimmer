@@ -7,12 +7,17 @@ BUGS
 - maxlength in firmware URL form  
   FIXED 2017/10/15
 - Don't show Firmware Update when on configuration LAN
+  FIXED 2019/4/12 v0.6
 - main LED flickering when downloading during update?
 - LED state is ON after power-up but not reported to hub
-- Occasional multi-second delay on short tap after long period of inactivity
-- Label rate slider in SmartThings app
-- updateHub() WAS working but now gets stuck sometime after sending message?
-  ? Broken by Samsung update early (March?) 2019.
+- Locks up when button pushed!
+  Fixed 2019/4/1 v0.6
+  Version 0.5 (2017/10) was working fine in two devices until early 2019.
+  Samsung must have changed something.  Rushed version 0.6 (not fully tested)
+  into one device and then discovered that while the button, the smartThings
+  interface, and the configuration pages were working,
+  the rest of the web interface was not.
+  Fixed 2019/5/12 v0.7
 
 PROPOSED
 --------
@@ -36,4 +41,8 @@ PROPOSED
 - Change uuid base back to ESP8266SSDP standard (so ESP8266SSDP.cpp need not be modified)
 - Change device rate curve to be quicker at the bright end.
 - Configuration requires button press
-- Update ReadMe to finish SmartThings configuration and document OTA firmware update
+  DONE 2019/4/1 v0.6 (kinda - removed from regular UI)
+  Now only available when Factory Reset.
+- Retry updateHub on fail and updateHub on set from not-hub.
+- Revisit Hub update logic - Currently when switch is off and hub adjusts level,
+  device adjusts level and tuns on switch but hub thinks switch is still off.

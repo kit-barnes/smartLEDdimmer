@@ -1,6 +1,6 @@
-uPnP12vLEDdimmer
+smartLEDdimmer
 ================
-SmartThings Hub connected device controlling a monochrome 12 volt LED strip.
+A 12v LED dimmer-switch - controlled via push-button switch, WiFi, or SmartThings.
 
 Includes
 --------

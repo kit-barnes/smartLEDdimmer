@@ -12,7 +12,7 @@
 #include <ESP8266httpUpdate.h>
 #include <FS.h>
 
-const char* version = "0.6";
+const char* version = "0.7";
 
 #define PIN_BUTTON    14  // local control button - short press: on/off, long press adjusts dimming
 #define PIN_LEVEL     13  // PWM output to LEDs - 0 (always low) for off, 1023 (always high) full on
@@ -53,38 +53,37 @@ int ledRate = 0;        // dim/brighten rate - 0=immediate
 int targetPWM = 0;      // 0 to 1023 - internal
 bool longPress = false; // button is long-pressed (local dimmer control asserted)
 
-static const char HTTP_START[] PROGMEM = "<!DOCTYPE HTML><html><head>\n\
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\
-  <style>\n\
-    body {font-family:\"Lato\",sans-serif;}\n\
-    div.tabs {overflow:hidden;background-color:#f1f1f1;}\n\
-    div.tabs button {background-color:inherit;float:left;padding: 14px 16px;font-size: 17px;}\n\
-    div.tabs button:hover{background-color:#ddd;}\n\
-    div.tabs button.active {background-color: #ccc;}\n\
-  </style><script src='/script.js'></script>\n\
-  </head><body onload='startup()'>\n\
-    <p><b>WiFi 12volt LED Dimmer - version %s\n\
-    <br>MAC address = %s</b>";    // printf format string requires version & MAC address
-
 void sendDimmerRoot() {
   Serial.print(F("in sendDimmerRoot...  strlen(s) = "));
-  char s[3200];
-  sprintf_P(s, HTTP_START, version, WiFi.macAddress().c_str());
-  sprintf_P( &s[strlen(s)], PSTR("\
-    <noscript><p>This page requires JavaScript which your browser is not providing.</noscript>\n\
-    <div class='tabs'>\n\
-      <button class='tab' onclick=\"tabHit(event, 'ctrl')\" id='defaultCard'>State</button>\n\
-      <button class='tab' onclick=\"tabHit(event, 'cnfg')\">Config</button>\n\
-      <button class='tab' onclick=\"tabHit(event, 'help')\">Help</button>\n\
-    </div><div id='card'>/div></body></html>") );
+  char s[1200];
+  sprintf_P( s, PSTR("\
+    <!DOCTYPE HTML><html><head>\
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\
+    <style>\
+      body {font-family:\"Lato\",sans-serif;}\
+      div.tabs {overflow:hidden;background-color:#f1f1f1;}\
+      div.tabs button {background-color:inherit;float:left;padding: 14px 16px;font-size: 17px;}\
+      div.tabs button:hover{background-color:#ddd;}\
+      div.tabs button.active {background-color: #ccc;}\
+    </style><script src='/script.js'></script>\
+    </head><body onload='startup()'>\
+    <p><b>WiFi 12volt LED Dimmer - version %s\
+    <br>MAC address = %s</b>\
+    <noscript><p>This page requires JavaScript which your browser is not providing.</noscript>\
+    <div class='tabs'>\
+      <button class='tab' onclick=\"tabHit(event, 'ctrl')\" id='defaultCard'>State</button>\
+      <button class='tab' onclick=\"tabHit(event, 'cnfg')\">Config</button>\
+      <button class='tab' onclick=\"tabHit(event, 'help')\">Help</button>\
+    </div><div id='card'>/div></body></html>"),
+    version, WiFi.macAddress().c_str());
   Serial.println(strlen(s));
   server.send(200, "text/html", s);
+  Serial.println("  leaving sendDimmerRoot");
 }
 
 void sendJS() {
-  Serial.print(F("in sendJS...  strlen(s) = "));
-  char s[3200];
-  sprintf_P(s, PSTR("\n\
+  Serial.println(F("in sendJS"));
+  server.send(200, "application/javascript", PSTR("\
     function startup() {\n\
       document.getElementById('defaultCard').click();\n\
     }\n\
@@ -130,8 +129,7 @@ void sendJS() {
       xhttp.send();\n\
     }\n\
   "));
-  Serial.println(strlen(s));
-  server.send(200, "application/javascript", s);
+  Serial.println("  leaving sendJS");
 }
 
 void sendConfigurationForm() {
@@ -320,6 +318,23 @@ void handleSet() {	// execute command from hub or web interface
   server.send(200, "text/plain", "");
 }
 
+void handleNotFound() {
+  Serial.println(F("handleNotFound:"));
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+  Serial.println(message);
+}
+
 void updateHub() {
   WiFiClient c;
   Serial.print(F("in updateHub  hub="));
@@ -366,15 +381,15 @@ void updateHub() {
 }
 
 void setup() {	
+  analogWrite(PIN_LEVEL, 0);   // set output off
   devname = String("wcbDimmer")+String(ESP.getChipId(),16);
+  WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();    // need WiFi disconnected to set host name
-  delay(1000);
   Serial.begin(115200);
   Serial.println();
   Serial.printf("//\n//  WiFi 12volt LED Dimmer - Version %s\n//", version);
   Serial.println();
-  analogWrite(PIN_LEVEL, 0);   // set output off
   pinMode(PIN_BLUE, OUTPUT); digitalWrite(PIN_BLUE, LOW);	// blue LED on during format
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   if (digitalRead(PIN_BUTTON)==LOW) {
@@ -398,7 +413,9 @@ void setup() {
     Serial.printf("ssid (%d char) = %s\npassword = %s\nhost = %s\n",
         ssid.length(), ssid.c_str(), password.c_str(), host.c_str());
     WiFi.hostname(host);
+    // TODO add reconnection code?  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     Serial.println(F("connecting"));
+    WiFi.mode(WIFI_STA);
     if (password == "") WiFi.begin(ssid.c_str());         // not tested! (for success)
     else WiFi.begin(ssid.c_str(),password.c_str());
     int status = WiFi.waitForConnectResult();
@@ -406,7 +423,6 @@ void setup() {
       Serial.print(F("Connected - IP address: "));
       Serial.println(WiFi.localIP());
       Serial.println(F("Successful initialization"));
-      WiFi.softAPdisconnect(true);
       devState = WAITING_HUB;
     } else {
       error = String(statusWiFi[status]);
@@ -420,38 +436,45 @@ void setup() {
     host = String();
     devState = FACTORY_RESET;
   }
-  // configure and start http server
-  server.on("/", HTTP_GET, error.length()? sendConfigurationForm: sendDimmerRoot);
-  server.on("/script.js", HTTP_GET, sendJS);
-  server.on("/card", HTTP_GET, handleCardRequest);
-  server.on("/config", HTTP_GET, handleConfiguration);
-  server.on("/updatefirmware", HTTP_GET, handleUpdateFirmware);
-  server.on("/description.xml", HTTP_GET, [](){
-    WiFiClient c = server.client();
-    Serial.print(F("Description request - Remote:"));
-    Serial.print( c.remoteIP() );
-    Serial.print(F(":"));
-    Serial.print( c.remotePort() );
-    Serial.print(F("  Local:"));
-    Serial.print( c.localIP() );
-    Serial.print(F(":"));
-    Serial.println( c.localPort() );
-    SSDP.schema(c);
-  });
-  server.on("/set", HTTP_GET, handleSet);
-  Serial.println(F("Starting server"));
-  server.begin();
   if (error.length()) {
-    Serial.println(error);
     Serial.println(F("Configuration required"));
+    Serial.println(error);
     WiFi.disconnect(true);
     // Create a WiFi access point and provide a web server on it.
     Serial.println(F("Starting configuration access point"));
+    WiFi.mode(WIFI_AP);
     WiFi.softAP(devname.c_str());
-    WiFi.mode(WIFI_AP);             // suspenders AND a belt?
     Serial.print(F("configuration server at "));
     Serial.println( WiFi.softAPIP() );
+    // configure and start http server
+    server.on("/", HTTP_GET, sendConfigurationForm);
+    server.on("/config", HTTP_GET, handleConfiguration);
+    server.onNotFound(handleNotFound);
+    Serial.println(F("Starting server"));
+    server.begin();
   } else {  // no error - ready for SmartThings hub
+    // configure and start http server
+    server.on("/", HTTP_GET, sendDimmerRoot);
+    server.on("/script.js", HTTP_GET, sendJS);
+    server.on("/card", HTTP_GET, handleCardRequest);
+    server.on("/config", HTTP_GET, handleConfiguration);
+    server.on("/updatefirmware", HTTP_GET, handleUpdateFirmware);
+    server.on("/description.xml", HTTP_GET, [](){
+      WiFiClient c = server.client();
+      Serial.print(F("Description request - Remote:"));
+      Serial.print( c.remoteIP() );
+      Serial.print(F(":"));
+      Serial.print( c.remotePort() );
+      Serial.print(F("  Local:"));
+      Serial.print( c.localIP() );
+      Serial.print(F(":"));
+      Serial.println( c.localPort() );
+      SSDP.schema(c);
+    });
+    server.on("/set", HTTP_GET, handleSet);
+    server.onNotFound(handleNotFound);
+    Serial.println(F("Starting server"));
+    server.begin();
     Serial.println(F("Starting SSDP"));
     SSDP.setSchemaURL("description.xml");
     SSDP.setHTTPPort(80);
