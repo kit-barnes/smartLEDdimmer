@@ -7,12 +7,12 @@
  // Initial configuration at 192.168.4.1:80 on open WLAN - SSID: wcbDimmerXXXXXX
 
 #include <ESP8266WiFi.h>
-#include <ESP8266SSDP.h>    // ESP8266SSDP.ccp modified to provide different uuid base
+#include <ESP8266SSDP.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266httpUpdate.h>
 #include <FS.h>
 
-const char* version = "0.7";
+const char* version = "0.8";
 
 #define PIN_BUTTON    14  // local control button - short press: on/off, long press adjusts dimming
 #define PIN_LEVEL     13  // PWM output to LEDs - 0 (always low) for off, 1023 (always high) full on
@@ -44,14 +44,15 @@ const char *statusWiFi[] = {
 // Device State
 enum {FACTORY_RESET, NOT_ONLINE, WAITING_HUB, NORMAL, UPDATING, UPDATE_FAILED};
 int devState = FACTORY_RESET;
-IPAddress hubIP;        // valid iff
-int hubPort = 0;        //    hubPort != 0
+IPAddress hubIP;                // valid iff
+int hubPort = 0;                //    hubPort != 0
+bool updateNeeded = false;
+bool longPress = false;         // button is long-pressed (local control asserted)
 // Dimmer State
 bool ledOn = false;
 int ledLevel = 100;     // 1 to 100 - exposed
 int ledRate = 0;        // dim/brighten rate - 0=immediate
 int targetPWM = 0;      // 0 to 1023 - internal
-bool longPress = false; // button is long-pressed (local dimmer control asserted)
 
 void sendDimmerRoot() {
   Serial.print(F("in sendDimmerRoot...  strlen(s) = "));
@@ -159,7 +160,8 @@ void handleConfiguration() {
     host = server.arg("host");
     Serial.printf("ssid (%d char) = %s\npassword = %s\nhost = %s\n",
         ssid.length(), ssid.c_str(), password.c_str(), host.c_str());
-    if ( int x=ssid.length() && x<=32 && password.length()<64 && host.length()<=32) {
+    int x = ssid.length();
+    if (x && x<=32 && password.length()<64 && host.length()<=32) {
       Serial.print(F("Opening configuration file for write..."));
       File f = SPIFFS.open(configFile, "w");
       Serial.println(f? F("OK"): F("Failed!"));
@@ -189,6 +191,7 @@ void handleConfiguration() {
 
 void handleUpdateFirmware() {
   Serial.println(F("in handleUpdateFirmware"));
+  WiFiClient client;
   if (digitalRead(PIN_BUTTON) == LOW) {   // button is pressed - do update
     String url = server.arg("url");   // error/input check? XXXXXXXXXXXXXXXXXXXXXXX
     devState = UPDATING; // don't expect this to do anything XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -196,7 +199,8 @@ void handleUpdateFirmware() {
     server.send(200, "text/html", "<!DOCTYPE HTML><html><body><h3>UPDATING</h3></body></html>");
     Serial.print("Updating...");
     delay(200);
-    t_httpUpdate_return ret = ESPhttpUpdate.update(url.c_str());
+    ESPhttpUpdate.rebootOnUpdate(true);
+    ESPhttpUpdate.update(client, url.c_str());
     // successful update will reset device and not get here
     devState = UPDATE_FAILED;
     Serial.println("FAILED");
@@ -277,6 +281,37 @@ void setTargetPWM() { targetPWM = (ledOn && ledLevel>0) ? map(ledLevel,1,100,1,1
 
 void handleSet() {	// execute command from hub or web interface
   Serial.println(F("in handleSet"));
+  String reqSwitch = server.arg("switch");
+  String reqLevel = server.arg("level");
+  String reqRate = server.arg("rate");
+  Serial.print(F(" reqLevel=")); Serial.print(reqLevel);
+  Serial.print(F(" reqSwitch=")); Serial.print(reqSwitch);
+  Serial.print(F(" reqRate=")); Serial.println(reqRate);
+  bool changed = false;
+  if (reqRate.length()) {
+    int rate = atoi(reqRate.c_str());
+    if (rate != ledRate) {
+      ledRate = rate;
+      changed = true;
+    }
+  }
+  if (!longPress) {
+    int level = ledLevel;
+    bool on = ledOn;
+    if (reqLevel.length()) {
+      level = atoi(reqLevel.c_str());
+      on = level? true: false;
+    }
+    if (reqSwitch.length()) {
+      on = (reqSwitch == "on");
+      if (on && !level) level = 100;
+    }
+    if (level != ledLevel || on != ledOn) {
+      ledLevel = level;
+      ledOn = on;
+      changed = true;
+    }
+  }
   IPAddress ip;
   int port;
   if (server.hasArg("hubAddr") && parseHubAddr(server.arg("hubAddr"),ip,port)) {
@@ -285,37 +320,28 @@ void handleSet() {	// execute command from hub or web interface
     devState = NORMAL;
     hubIP = (server.client()).remoteIP();
     hubPort = port;
+    updateNeeded = false;         // taken care of by response below
     Serial.print(F("  hub="));
     Serial.print(hubIP);
     Serial.print(F(":"));
     Serial.println(hubPort);
+  } else {    // set request from other than hub
+    if (changed) updateNeeded = true;
   }
-  String reqSwitch = server.arg("switch");
-  String reqLevel = server.arg("level");
-  String reqRate = server.arg("rate");
-  Serial.print(F(" reqLevel=")); Serial.print(reqLevel);
-  Serial.print(F(" reqSwitch=")); Serial.print(reqSwitch);
-  Serial.print(F(" reqRate=")); Serial.println(reqRate);  
-  if (reqRate.length()) ledRate = atoi(reqRate.c_str());
-  if (!longPress) {
-    if (reqLevel.length()) {
-      ledLevel = atoi(reqLevel.c_str());
-      ledOn = ledLevel? true: false;
-    }
-    if (reqSwitch.length()) {
-      ledOn = (reqSwitch == "on");
-	  if (ledOn && !ledLevel) ledLevel = 100;
-    }
-  }
-  Serial.print(F(" ledOn=")); Serial.print(ledOn);
-  Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
-  Serial.print(F(" ledRate=")); Serial.print(ledRate);
-  setTargetPWM();
-  Serial.print(F(" targetPWM=")); Serial.println(targetPWM);
+  if (changed) {
+    setTargetPWM();
+    Serial.print(F(" ledOn=")); Serial.print(ledOn);
+    Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
+    Serial.print(F(" ledRate=")); Serial.print(ledRate);
+    Serial.print(F(" targetPWM=")); Serial.println(targetPWM);
+} else {Serial.print(F(" no change!"));}
+  // response
+  server.sendHeader("Connection","close");
   server.sendHeader("Switch",ledOn?"on":"off");
   server.sendHeader("Level",String(ledLevel).c_str());
   server.sendHeader("Rate",String(ledRate).c_str());
   server.send(200, "text/plain", "");
+  server.client().stop();
 }
 
 void handleNotFound() {
@@ -545,7 +571,7 @@ void adjustPWM() {
   static int currentPWM = 0;
   static unsigned long lastMillis = 0;
   int diff;
-  if (diff = targetPWM - currentPWM) {
+  if ((diff = targetPWM - currentPWM) != 0) {
     if (!ledRate) {
       currentPWM = targetPWM;
     }
