@@ -334,7 +334,9 @@ void handleSet() {	// execute command from hub or web interface
     Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
     Serial.print(F(" ledRate=")); Serial.print(ledRate);
     Serial.print(F(" targetPWM=")); Serial.println(targetPWM);
-} else {Serial.print(F(" no change!"));}
+  } else {
+    Serial.println(F(" no change!"));
+  }
   // response
   server.sendHeader("Connection","close");
   server.sendHeader("Switch",ledOn?"on":"off");
@@ -362,13 +364,17 @@ void handleNotFound() {
 }
 
 void updateHub() {
-  WiFiClient c;
-  Serial.print(F("in updateHub  hub="));
-  Serial.print(hubIP); Serial.print(F(":")); Serial.println(hubPort);
-  Serial.print(F(" ledOn=")); Serial.print(ledOn);
-  Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
-  Serial.print(F(" ledRate=")); Serial.println(ledRate);
-	if (hubPort != 0) {
+  static WiFiClient c;
+  static unsigned long retryTime = 0;   // next time to attempt connection
+	if (!updateNeeded) return;
+  if (hubPort == 0) return;
+  if (millis() > retryTime) {   // connect
+    if (c.connected()) c.stop();    // abandon any previous attempt
+    Serial.print(F("updateHub connect:  hub="));
+    Serial.print(hubIP); Serial.print(F(":")); Serial.println(hubPort);
+    Serial.print(F(" ledOn=")); Serial.print(ledOn);
+    Serial.print(F(" ledLevel=")); Serial.print(ledLevel);
+    Serial.print(F(" ledRate=")); Serial.println(ledRate);
 		if (c.connect(hubIP,hubPort)) {
 			// send status
 			c.println(F("NOTIFY / HTTP/1.1"));
@@ -379,30 +385,31 @@ void updateHub() {
 			c.println(F("CONTENT-LENGTH: 0"));
 			c.println();
 			c.println();
-			Serial.println(F("  Hub updated - Responds:"));
-			//wait for response
-			unsigned long startMS = millis();
-      while (c.available() == 0) {
-        if (millis() > startMS + 1000) {
-          devState = WAITING_HUB;
-          Serial.println(F("  no response from Hub"));
-          c.stop();
-          return;
-        }
-        delay(1);
-      }
-      while (c.available()) {
-        char ch = static_cast<char>(c.read());
-        Serial.print(ch);
-      }
-      Serial.println();
-			c.stop();
+			Serial.println(F("  status sent to hub"));
 		} else {
-			devState = WAITING_HUB;
 			Serial.println(F("  failed: couldn't connect"));
 		}
-	} else {
-    Serial.print(F(" failed: devStste=")); Serial.println(devState);
+    devState = WAITING_HUB;
+    retryTime = millis() + 10000;
+  } else {    // waiting for response
+    if (c.connected()) {
+      if (c.available()) {
+        Serial.println(F("updateHub response:"));
+        delay(1);     // wait for entire response?
+        while (c.available()) {
+          char ch = static_cast<char>(c.read());
+          Serial.print(ch);
+        }
+        Serial.println();
+        Serial.println();
+        // TODO: Check for OK response?, Output response delay?
+        c.stop();   // TODO: Check for false (bad) stop?
+        updateNeeded = false;
+        devState = NORMAL;
+        retryTime = 0;
+      }
+      // else do nothing - wait
+    }
   }
 }
 
@@ -533,12 +540,12 @@ void handleButton() {
         longPress = false;
         brighten = !brighten;
         ledRate = saveRate;
-        updateHub();   // send level to hub
+        updateNeeded = true;   // send level to hub
       } else if (millis()-startMillis >= DEBOUNCE) {   // short press ends
         // toggle switch on-off
         ledOn = !ledOn;
         setTargetPWM();
-        updateHub();   // send level to hub
+        updateNeeded = true;   // send level to hub
       }
     }
     startMillis = 0;
@@ -634,4 +641,5 @@ void loop() {
   handleButton();
   adjustPWM();
   setStatusLEDs();
+  updateHub();
 }
