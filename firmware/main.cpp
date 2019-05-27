@@ -277,7 +277,7 @@ bool parseHubAddr(const String ha, IPAddress ip, int& port){
   return true;
 }
  
-void setTargetPWM() { targetPWM = (ledOn && ledLevel>0) ? map(ledLevel,1,100,1,1023) : 0; }
+void setTargetPWM() { targetPWM = (ledOn && ledLevel>0) ? map(ledLevel,1,100,3,1023) : 0; }
 
 void handleSet() {	// execute command from hub or web interface
   Serial.println(F("in handleSet"));
