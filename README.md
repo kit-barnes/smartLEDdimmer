@@ -5,11 +5,11 @@ A 12v LED dimmer-switch - controlled via push-button switch, WiFi, or SmartThing
 Includes
 --------
 - Schematic, and Firmware for an ESP8266 Arduino based device
-  - WiFi connection to SmartThings Hub on local LAN
   - Local control of ON/OFF and dim level by a pushbutton switch
-  - selectable dim/brighten rate
+  - WiFi connection to SmartThings Hub on local LAN
+  - selectable dim/brighten rate via web interface and SmartThings
   - OTA firmware update enabled
-- SmartThings code for device handler and uPnP Service Manager smart app
+- SmartThings code for device handler and dimmer manager smart app
 - SketchUp files for 3D printed case and switch mount
 
 Development and Build Environment
@@ -39,10 +39,11 @@ Note: While loading, 12V supply is disconnected - Huzzah is powered by FTDI cabl
 Local Operation
 ---------------
 Tap the pushbutton switch to toggle the LED strip on and off.  
-Press and hold the pushbutton to continuously cycle the strip
-up and down through all brightness levels.
+Press and hold the pushbutton to continuously cycle the strip brightness
+up and down in distinct steps.
 Alternate presses reverse the cycle direction - If you release the switch
-while the strip is brightening, the next press will start dimming it.
+while the strip is brightening, the next long press will start dimming it.
+
 
 The two switches on the Adafruit Huzzah are not used except for initial
 firmware load.
