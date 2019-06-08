@@ -50,3 +50,7 @@ PROPOSED
   DONE 2019/5/24 v0.8alpha
 - Revisit Hub update logic - Currently when switch is off and hub adjusts level,
   device adjusts level and tuns on switch but hub thinks switch is still off.
+- include fade rate into configuration file.
+- remove SSID & Password from normal configuration - make available only on factory reset
+  (so that they need not be entered to change hostname)
+- ability to update firmware pushed from PC or phone on configuration LAN

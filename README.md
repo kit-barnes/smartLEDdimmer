@@ -60,10 +60,11 @@ whenever the button is pressed.
 - Following Factory Reset (unconfigured) - Blue LED flashing once every 2 seconds
 - Configured but not connected to WiFi - Blue LED flashing twice every 2 seconds
 - Connected but not communicating with hub - Red LED flashing once every 4 seconds
+- Normal operation - both LEDs off
 
 WiFi Configuration
 ------------------
-The dimmer needs to be configured to connect to your Wi-Fi LAN.
+The dimmer needs to be configured to connect to your WiFi LAN.
 
 - Factory Reset the device by pressing the push button switch for a few seconds
   as you apply power. The blue LED should light and remain lit for about 30 seconds
@@ -84,7 +85,16 @@ The dimmer needs to be configured to connect to your Wi-Fi LAN.
 
 WiFi Operation
 --------------
+There are 3 tabs on the dimmer's web interface:
 
+- *State* has controls and status for
+  - on/off
+  - brightness level
+  - fade/brighten rate
+- *Config* has two sections
+  - Configuration of SSID, Password, and Hostname
+  - Update firmware
+- *Help* is unfinished - just displays 'Hello World'
 
 SmartThings Setup
 -----------------
@@ -96,6 +106,7 @@ SmartThings Setup
   make sure your dimmer is connected to the same LAN as your hub).
 - Select your device(s), tap Done and Save. Your device(s) will be added into your **My Home**
   where you can rename and select an appropriate icon for them.
+- When your device(s) has been selected and saved, the red LED will stop the slow (4s) flash.
 - It is NOT possible to remove individual devices - you must remove the service manager using the
   SmartThings mobile app (which will remove them all) then reinstall any you wish to keep.
   To remove the service manager, you must first remove all the dimmer devices
